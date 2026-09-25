@@ -1,0 +1,157 @@
+# Intel(R) Core(TM) Ultra 9 285
+# kernel 7.0.0-34-generic, 2026-09-25 23:14 UTC, P-core=0 E-core=8
+
+## gpu_stale: one trial at a time
+cpu=0 pat_index=2 engine=render rounds=200 lines/round=2048
+sequence                              stale      fresh    other   %stale
+load (no flush)                       27305          0        0  100.00%
+clflushopt; load                      25809       1497        0   94.52%
+clflushopt; lfence; load                  2      27305        0    0.01%
+clflushopt; sfence; load              25693       1615        0   94.09%
+clflushopt; mfence; load                  0      27309        0    0.00%
+clflushopt; sfence; lfence; ld            1      27308        0    0.00%
+clflush; load                         25996       1313        0   95.19%
+clflush; lfence; load                     3      27306        0    0.01%
+clwb; lfence; load                    27308          0        0  100.00%
+clwb; mfence; load                    27307          0        0  100.00%
+MISS-st; clflushopt; lfence; ld        8656      18650        0   31.70%
+MISS-st; clflushopt; sf; lf; ld        8201      19104        0   30.03%
+MISS-st; clflushopt; mfence; ld           0      27304        0    0.00%
+MISS-st; clflush; lfence; ld           8261      19043        0   30.26%
+MISS-st; lfence; ld (no flush)        27304          0        0  100.00%
+
+cpu=8 pat_index=2 engine=render rounds=200 lines/round=2048
+sequence                              stale      fresh    other   %stale
+load (no flush)                       27243         62        0   99.77%
+clflushopt; load                      27257         49        0   99.82%
+clflushopt; lfence; load                 14      27293        0    0.05%
+clflushopt; sfence; load              27264         44        0   99.84%
+clflushopt; mfence; load                  0      27309        0    0.00%
+clflushopt; sfence; lfence; ld           13      27296        0    0.05%
+clflush; load                         27235         74        0   99.73%
+clflush; lfence; load                    13      27296        0    0.05%
+clwb; lfence; load                    27237         71        0   99.74%
+clwb; mfence; load                    27266         41        0   99.85%
+MISS-st; clflushopt; lfence; ld          27      27279        0    0.10%
+MISS-st; clflushopt; sf; lf; ld          16      27289        0    0.06%
+MISS-st; clflushopt; mfence; ld           0      27304        0    0.00%
+MISS-st; clflush; lfence; ld             13      27291        0    0.05%
+MISS-st; lfence; ld (no flush)        27240         64        0   99.77%
+
+## controls: PAT 3 (coherent), PAT 0 (WB non-coherent), copy engine
+cpu=0 pat_index=3 engine=render rounds=100 lines/round=2048
+sequence                              stale      fresh    other   %stale
+load (no flush)                           0      13651        0    0.00%
+clflushopt; load                          0      13651        0    0.00%
+clflushopt; lfence; load                  0      13651        0    0.00%
+clflushopt; sfence; load                  0      13652        0    0.00%
+clflushopt; mfence; load                  0      13653        0    0.00%
+clflushopt; sfence; lfence; ld            0      13654        0    0.00%
+clflush; load                             0      13655        0    0.00%
+clflush; lfence; load                     0      13656        0    0.00%
+clwb; lfence; load                        0      13656        0    0.00%
+clwb; mfence; load                        0      13656        0    0.00%
+MISS-st; clflushopt; lfence; ld           0      13655        0    0.00%
+MISS-st; clflushopt; sf; lf; ld           0      13654        0    0.00%
+MISS-st; clflushopt; mfence; ld           0      13653        0    0.00%
+MISS-st; clflush; lfence; ld              0      13652        0    0.00%
+MISS-st; lfence; ld (no flush)            0      13651        0    0.00%
+
+cpu=0 pat_index=0 engine=render rounds=100 lines/round=2048
+sequence                              stale      fresh    other   %stale
+load (no flush)                       13651          0        0  100.00%
+clflushopt; load                      13313        338        0   97.52%
+clflushopt; lfence; load                  0      13651        0    0.00%
+clflushopt; sfence; load              13343        309        0   97.74%
+clflushopt; mfence; load                  0      13653        0    0.00%
+clflushopt; sfence; lfence; ld            0      13654        0    0.00%
+clflush; load                         13375        280        0   97.95%
+clflush; lfence; load                     0      13656        0    0.00%
+clwb; lfence; load                    13656          0        0  100.00%
+clwb; mfence; load                    13656          0        0  100.00%
+MISS-st; clflushopt; lfence; ld        5494       8161        0   40.23%
+MISS-st; clflushopt; sf; lf; ld        4304       9350        0   31.52%
+MISS-st; clflushopt; mfence; ld           0      13653        0    0.00%
+MISS-st; clflush; lfence; ld           3914       9738        0   28.67%
+MISS-st; lfence; ld (no flush)        13651          0        0  100.00%
+
+cpu=0 pat_index=2 engine=blt rounds=100 lines/round=2048
+sequence                              stale      fresh    other   %stale
+load (no flush)                       13651          0        0  100.00%
+clflushopt; load                      13387        264        0   98.07%
+clflushopt; lfence; load                  0      13651        0    0.00%
+clflushopt; sfence; load              13413        239        0   98.25%
+clflushopt; mfence; load                  0      13653        0    0.00%
+clflushopt; sfence; lfence; ld            0      13654        0    0.00%
+clflush; load                         13437        218        0   98.40%
+clflush; lfence; load                     1      13655        0    0.01%
+clwb; lfence; load                    13656          0        0  100.00%
+clwb; mfence; load                    13656          0        0  100.00%
+MISS-st; clflushopt; lfence; ld        5698       7957        0   41.73%
+MISS-st; clflushopt; sf; lf; ld        4754       8900        0   34.82%
+MISS-st; clflushopt; mfence; ld           0      13653        0    0.00%
+MISS-st; clflush; lfence; ld           3917       9735        0   28.69%
+MISS-st; lfence; ld (no flush)        13651          0        0  100.00%
+
+## gpu_stale grouped: K x clflushopt, one fence, K loads
+cpu=0 pat_index=2 K=1 fence=none groups=204800 stale=170778/204800 (83.39%)  first-load stale=170778 last-load stale=170778
+cpu=0 pat_index=2 K=1 fence=lfence groups=204800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=1 fence=mfence groups=204800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=4 fence=none groups=51200 stale=204089/204800 (99.65%)  first-load stale=51059 last-load stale=50992
+cpu=0 pat_index=2 K=4 fence=lfence groups=51200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=4 fence=mfence groups=51200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=16 fence=none groups=12800 stale=195128/204800 (95.28%)  first-load stale=12709 last-load stale=11039
+cpu=0 pat_index=2 K=16 fence=lfence groups=12800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=16 fence=mfence groups=12800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=64 fence=none groups=3200 stale=5254/204800 (2.57%)  first-load stale=109 last-load stale=80
+cpu=0 pat_index=2 K=64 fence=lfence groups=3200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=0 pat_index=2 K=64 fence=mfence groups=3200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=1 fence=none groups=204800 stale=204799/204800 (100.00%)  first-load stale=204799 last-load stale=204799
+cpu=8 pat_index=2 K=1 fence=lfence groups=204800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=1 fence=mfence groups=204800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=4 fence=none groups=51200 stale=204764/204800 (99.98%)  first-load stale=51191 last-load stale=51191
+cpu=8 pat_index=2 K=4 fence=lfence groups=51200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=4 fence=mfence groups=51200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=16 fence=none groups=12800 stale=204720/204800 (99.96%)  first-load stale=12795 last-load stale=12795
+cpu=8 pat_index=2 K=16 fence=lfence groups=12800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=16 fence=mfence groups=12800 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=64 fence=none groups=3200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=64 fence=lfence groups=3200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+cpu=8 pat_index=2 K=64 fence=mfence groups=3200 stale=0/204800 (0.00%)  first-load stale=0 last-load stale=0
+
+## unrolled_test: back to back
+cpu=0: 2048 x (clflushopt L; FENCE; load L) back to back, 1600 rounds
+
+variant           store version stale      register-only stale
+seq  none        204785/204800  100.0%     204785/204800  100.0%
+seq  lfence         351/204800    0.2%          0/204800    0.0%
+seq  sflf        147455/204800   72.0%          0/204800    0.0%
+seq  mfence           0/204800    0.0%          0/204800    0.0%
+rand none        204787/204800  100.0%     204757/204800  100.0%
+rand lfence        1976/204800    1.0%         43/204800    0.0%
+rand sflf        141402/204800   69.0%      20710/204800   10.1%
+rand mfence           0/204800    0.0%          0/204800    0.0%
+
+Stale loads in fenced store-version variants:
+variant      position in sequence (eighths)       re-check with clflushopt;mfence
+seq  lfence  48 48 54 41 36 29 66 29              0 OLD, 351 NEW
+seq  sflf    2594 12574 20065 22491 22641 22332 22719 22039  0 OLD, 147455 NEW
+rand lfence  182 371 46 158 345 219 390 265       0 OLD, 1976 NEW
+rand sflf    6535 11092 13973 17432 21208 22851 24247 24064  0 OLD, 141402 NEW
+
+cpu=8: 2048 x (clflushopt L; FENCE; load L) back to back, 1600 rounds
+
+variant           store version stale      register-only stale
+seq  none        204799/204800  100.0%     204793/204800  100.0%
+seq  lfence           0/204800    0.0%          0/204800    0.0%
+seq  sflf             0/204800    0.0%          0/204800    0.0%
+seq  mfence           0/204800    0.0%          0/204800    0.0%
+rand none        204798/204800  100.0%     204786/204800  100.0%
+rand lfence          56/204800    0.0%         17/204800    0.0%
+rand sflf             0/204800    0.0%          0/204800    0.0%
+rand mfence           0/204800    0.0%          0/204800    0.0%
+
+Stale loads in fenced store-version variants:
+variant      position in sequence (eighths)       re-check with clflushopt;mfence
+rand lfence  0 0 0 0 0 56 0 0                     0 OLD, 56 NEW
+
