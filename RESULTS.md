@@ -2,8 +2,8 @@
 
 Machine: Core Ultra 9 285 (8 Lion Cove P-cores = CPUs 0-7, 16 Skymont E-cores
 = CPUs 8-23), Arrow Lake-S iGPU with the i915 driver, Linux 7.0.0-34-generic.
-All numbers come from one `./run_all.sh` run on 2026-09-25 (raw output in
-`results.txt`), P-core = CPU 0, E-core = CPU 8.
+All numbers come from one `./run_all.sh` run on 2026-09-25 at 23:18 UTC (raw
+output in `results.txt`), P-core = CPU 0, E-core = CPU 8.
 
 "Stale" means the load returned the value the CPU had cached before the GPU
 overwrote the line in DRAM. On non-coherent CXL memory, that is a read that
@@ -16,7 +16,7 @@ missed another host's write.
 | `clflushopt x; load x` | **no**: almost always stale |
 | `clflushopt x; sfence; load x` | **no**: almost always stale |
 | `clflushopt x; lfence; load x` | **no**: usually fresh, sometimes stale (up to ~40%) |
-| `clflushopt x; sfence; lfence; load x` | **no**: up to 72% stale back to back |
+| `clflushopt x; sfence; lfence; load x` | **no**: up to 76% stale back to back |
 | `clflush x; lfence; load x` | **no**: ~30% stale with a store ahead of it |
 | `clwb x; <any fence>; load x` | **no**: `clwb` keeps the line, always stale |
 | `clflushopt x; mfence; load x` | **yes**: 0 stale in every test |
@@ -29,7 +29,7 @@ which haven't been tested) between a flush and a read of the same line. Treat
 
 | Check | Result |
 |---|---|
-| Plain load, no flush (PAT 2, non-coherent) | 100.00% stale |
+| Plain load, no flush (PAT 2, non-coherent) | 100.00% stale (1 fresh in 27,305 on the P-core) |
 | Every sequence with PAT 3 (GPU snoops CPU caches) | 0.00% stale, all 15 rows |
 | PAT 0 (WB, non-coherent) and the copy engine | same pattern as PAT 2 |
 | Full flush after each round reads NEW on every line | passed, every round |
@@ -47,20 +47,20 @@ drained pipeline and store buffer. There are about 27,300 loads per row.
 
 | Sequence | P-core stale | E-core stale |
 |---|---|---|
-| load (no flush) | 100.00% | 99.77% |
-| `clflushopt; load` | 94.52% | 99.82% |
-| `clflushopt; sfence; load` | 94.09% | 99.84% |
+| load (no flush) | 100.00% | 100.00% |
+| `clflushopt; load` | 95.40% | 100.00% |
+| `clflushopt; sfence; load` | 95.08% | 100.00% |
 | **`clflushopt; lfence; load`** | **2 (0.01%)** | **14 (0.05%)** |
-| `clflushopt; sfence; lfence; load` | 1 (0.00%) | 13 (0.05%) |
+| `clflushopt; sfence; lfence; load` | 8 (0.03%) | 13 (0.05%) |
 | `clflushopt; mfence; load` | 0 | 0 |
-| `clflush; load` | 95.19% | 99.73% |
-| `clflush; lfence; load` | 3 (0.01%) | 13 (0.05%) |
-| `clwb; lfence; load` | 100.00% | 99.74% |
-| `clwb; mfence; load` | 100.00% | 99.85% |
-| **MISS-st; `clflushopt; lfence; load`** | **31.70%** | **0.10%** |
-| MISS-st; `clflushopt; sfence; lfence; load` | 30.03% | 0.06% |
+| `clflush; load` | 94.92% | 100.00% |
+| `clflush; lfence; load` | 3 (0.01%) | 12 (0.04%) |
+| `clwb; lfence; load` | 100.00% | 100.00% |
+| `clwb; mfence; load` | 100.00% | 100.00% |
+| **MISS-st; `clflushopt; lfence; load`** | **33.51%** | **28 (0.10%)** |
+| MISS-st; `clflushopt; sfence; lfence; load` | 28.38% | 14 (0.05%) |
 | MISS-st; `clflushopt; mfence; load` | 0 | 0 |
-| MISS-st; `clflush; lfence; load` | 30.26% | 0.05% |
+| MISS-st; `clflush; lfence; load` | 28.19% | 13 (0.05%) |
 
 In isolation `lfence` almost always works, but not always. With a slow store
 ahead of the flush, it fails about a third of the time on the P-core.
@@ -71,10 +71,10 @@ ahead of the flush, it fails about a third of the time on the P-core.
 
 | K | no fence (P / E) | `lfence` (P / E) | `mfence` (P / E) |
 |---|---|---|---|
-| 1 | 83.39% / 100.00% | 0 / 0 | 0 / 0 |
-| 4 | 99.65% / 99.98% | 0 / 0 | 0 / 0 |
-| 16 | 95.28% / 99.96% | 0 / 0 | 0 / 0 |
-| 64 | 2.57% / 0.00% | 0 / 0 | 0 / 0 |
+| 1 | 85.04% / 100.00% | 0 / 0 | 0 / 0 |
+| 4 | 99.26% / 99.99% | 0 / 0 | 0 / 0 |
+| 16 | 91.60% / 99.98% | 0 / 0 | 0 / 0 |
+| 64 | 2.30% / 0.00% | 0 / 0 | 0 / 0 |
 
 `lfence` never failed here. With K = 64 even the unfenced loads are mostly
 fresh, because 64 flushes back to back stall the pipeline long enough for
@@ -89,19 +89,19 @@ to memory; the register-only version doesn't store anything.
 | Variant | P-core store | P-core reg-only | E-core store | E-core reg-only |
 |---|---|---|---|---|
 | in order, no fence | 100.0% | 100.0% | 100.0% | 100.0% |
-| in order, `lfence` | **351 (0.2%)** | 0 | 0 | 0 |
-| in order, `sfence; lfence` | **72.0%** | 0 | 0 | 0 |
+| in order, `lfence` | **313 (0.2%)** | 0 | **3** | 0 |
+| in order, `sfence; lfence` | **68.9%** | 0 | **1,295 (0.6%)** | 0 |
 | in order, `mfence` | 0 | 0 | 0 | 0 |
 | shuffled, no fence | 100.0% | 100.0% | 100.0% | 100.0% |
-| shuffled, `lfence` | **1,976 (1.0%)** | **43** | **56** | **17** |
-| shuffled, `sfence; lfence` | **69.0%** | **10.1%** | 0 | 0 |
+| shuffled, `lfence` | **2,070 (1.0%)** | **35** | **79** | **17** |
+| shuffled, `sfence; lfence` | **75.5%** | **12.6%** | 0 | 0 |
 | shuffled, `mfence` | 0 | 0 | 0 | 0 |
 
 Every stale load in fenced variants read NEW when re-checked right away.
 
 On the P-core the stale loads are spread across the whole sequence, which
 rules out GPU writes arriving late (those would bunch stale loads at the
-start). For example, in-order `lfence` gives 48 48 54 41 36 29 66 29 per
+start). For example, in-order `lfence` gives 36 36 57 28 36 44 55 21 per
 eighth of the sequence.
 
 ## Interpretation
@@ -121,7 +121,7 @@ eighth of the sequence.
 - **`clwb` writes the line back but leaves it in the cache**, so it can never
   be used to read another host's writes.
 - **P-cores fail far more often than E-cores**, but E-cores still fail
-  with `lfence`.
+  with both `lfence` and `sfence; lfence`.
 
 ## Things to know
 
@@ -130,8 +130,12 @@ eighth of the sequence.
   with the same code, it was consistently 25-40%. A table-order change and the
   end-of-round check were both ruled out as the cause. What stays constant is
   that `lfence` sometimes fails and `mfence` never does.
-- **The E-core `lfence` failures in `unrolled_test` cluster.** In the shuffled
-  order they all fall in the sixth eighth of the sequence (57, 72, 56 across
-  three runs), so they look tied to particular lines or code positions rather
-  than random timing. Not investigated yet.
+- **E-core failures in `unrolled_test` cluster.** Shuffled-order `lfence`
+  failures all fall in the sixth eighth of the sequence (72, 57, 56, 79 across
+  four runs), so they look tied to particular lines or code positions rather
+  than random timing. The 1,295 in-order `sfence; lfence` failures in this
+  run are exactly 256 per eighth from the fourth eighth on (plus 15 in the
+  third). That fits a single round in which every load from about line 780
+  onward came back stale. Earlier runs had none. Neither pattern has been
+  investigated yet.
 - **Only this one CPU model has been tested.**
