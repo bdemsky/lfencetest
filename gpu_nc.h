@@ -8,7 +8,7 @@
 // A normal single-host machine is fully coherent, so there's no other agent
 // that can do this... except the iGPU, when it is told not to snoop.
 //
-// The recipe used by the tests:
+// The recipe used by lfence_test.c:
 //
 //   1. CPU writes OLD to a line, flushes it to DRAM, then reads it back.
 //      Now DRAM = OLD and the CPU caches hold a *clean* copy of OLD.
@@ -39,11 +39,11 @@
 //    i915 PAT table is:
 //        0 = WB, non-coherent      (GPU does not snoop CPU caches)
 //        1 = WT, non-coherent
-//        2 = UC, non-coherent      <- default for these tests
-//        3 = WB, 1-way coherent    (GPU snoops CPU caches) <- control
+//        2 = UC, non-coherent      <- used by the test
+//        3 = WB, 1-way coherent    (GPU snoops CPU caches) <- COHERENT=1 control
 //        4 = WB, 2-way coherent
-//    Measured on Arrow Lake: indices 0 and 2 leave the CPU copy stale
-//    (~100%), and index 3 never does, which confirms the table.
+//    Measured on Arrow Lake: index 2 leaves the CPU copy stale (~100%), and
+//    index 3 never does, which confirms the table.
 //
 //  * DRM_IOCTL_I915_GEM_MMAP_OFFSET with I915_MMAP_OFFSET_WB, then mmap() -
 //    maps the BO's pages into our address space as normal write-back (WB)
@@ -64,15 +64,15 @@
 //    address we choose (EXEC_OBJECT_PINNED) and bake that address into the
 //    commands.
 //
-//  * DRM_IOCTL_I915_GEM_EXECBUFFER2 - submits the batch to an engine (render
-//    or copy/"BLT") with the list of BOs it uses. EXEC_OBJECT_WRITE on the
+//  * DRM_IOCTL_I915_GEM_EXECBUFFER2 - submits the batch to the render engine
+//    with the list of BOs it uses. EXEC_OBJECT_WRITE on the
 //    target tells the kernel the batch writes it, so that waiting on the
 //    target waits for this batch.
 //
 //  * DRM_IOCTL_I915_GEM_WAIT - blocks until all outstanding GPU work that
 //    touches the BO has completed. The kernel ends each request with a GPU
 //    cache flush before signalling completion, so when this returns the GPU's
-//    writes are in memory. (The tests double check this: after each round,
+//    writes are in memory. (The test double checks this: after each round,
 //    a full flush of the CPU copies must read back NEW.)
 //
 //  * DRM_IOCTL_I915_GEM_SET_DOMAIN (CPU) - tells the kernel the CPU wrote to
@@ -84,7 +84,7 @@
 // non-coherent BO's pages when it first binds them for the GPU. nc_open()
 // therefore submits one empty batch up front so that happens before any
 // test, not between our cache warm-up and the measurement. The "load (no
-// flush)" control in each test confirms the lines really stay stale.
+// flush)" control confirms the lines really stay stale.
 // ---------------------------------------------------------------------------
 #ifndef GPU_NC_H
 #define GPU_NC_H
@@ -145,7 +145,6 @@ struct nc {
   uint32_t target, batch;  // BO handles
   volatile uint32_t *t;    // CPU (WB) mapping of the target: LINES lines
   uint32_t *b;             // CPU (WB) mapping of the batch
-  uint64_t engine;         // I915_EXEC_RENDER or I915_EXEC_BLT
 };
 
 // Create a GEM BO. pat >= 0 selects a GPU PAT index; pat < 0 keeps the
@@ -179,7 +178,7 @@ static inline void nc_exec(struct nc *g, uint32_t len) {
        .flags = EXEC_OBJECT_PINNED | EXEC_OBJECT_SUPPORTS_48B_ADDRESS}};
   struct drm_i915_gem_execbuffer2 eb = {
       .buffers_ptr = (uintptr_t)obj, .buffer_count = 2, .batch_len = len,
-      .flags = g->engine | I915_EXEC_NO_RELOC};
+      .flags = I915_EXEC_RENDER | I915_EXEC_NO_RELOC};
   if (ioctl(g->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &eb)) die("GEM_EXECBUFFER2");
 }
 
@@ -192,10 +191,9 @@ static inline void nc_wait(struct nc *g) {
 // Open the GPU, create the target BO (with GPU PAT index `pat`) and the batch
 // BO, map both WB on the CPU, and submit one empty batch so the kernel does
 // its first-bind work now.
-static inline void nc_open(struct nc *g, int pat, uint64_t engine) {
+static inline void nc_open(struct nc *g, int pat) {
   g->fd = open("/dev/dri/renderD128", O_RDWR);
   if (g->fd < 0) die("open /dev/dri/renderD128 (need group 'render')");
-  g->engine = engine;
 
   const uint64_t tsize = (uint64_t)LINES * LINE;
   const uint64_t bsize = 4 * 4 * LINES + 4096;  // 4 dwords per store + tail

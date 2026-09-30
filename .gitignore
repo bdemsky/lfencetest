@@ -1,3 +1,1 @@
-gpu_stale
-unrolled_test
-unrolled.c
+lfence_test

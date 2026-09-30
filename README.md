@@ -1,184 +1,130 @@
-# Does `clflushopt x; lfence; load x` see another agent's write?
+# LFENCE does not order a load after CLFLUSHOPT / CLFLUSH
 
-On CXL memory shared by several hosts without hardware coherence, software has
-to manage caching itself. Before reading data that another host may have
-written, a reader has to evict its own cached copy of the line and then read
-from the device. Some programs do this with:
+On memory without hardware cache coherence (for example CXL memory shared by
+several hosts), a reader must evict its possibly stale cached copy of a line
+before loading data another host wrote. Code sometimes does this with:
 
 ```
-clflushopt x
+clflushopt x      ; or clflush x
 lfence
 mov x, reg
 ```
 
-The Intel SDM doesn't clearly say whether `lfence` keeps that load from being
-served from the old cache line before the flush takes effect. These programs
-test it directly on real hardware.
+The Intel SDM doesn't clearly say whether the `lfence` keeps the load from
+being served from the old cache line. This repo lets you check on your own
+machine. On a Core Ultra 9 285 (Arrow Lake) the answer is **no**: the load
+can return the stale value, often. With `mfence` in place of `lfence`, it
+never did. See [RESULTS.md](RESULTS.md).
 
-## Short answer (Core Ultra 9 285 / Arrow Lake)
+## How it works
 
-**No, `lfence` is not enough.** On this CPU, loads after
-`clflushopt; lfence` sometimes return the stale cached value: rarely when each
-trial starts from a drained pipeline, but up to ~40% of the time when a slow
-store is ahead of the flush. `sfence; lfence` is no better. **`mfence` was the
-only fence that never let a stale load through**, in any test.
+A normal machine is fully coherent, so we need something to write memory
+without invalidating the CPU's caches, the way another CXL host would. The
+integrated GPU does that when its mapping of the memory is set not to snoop
+the CPU caches. Each round, for 2048 cache lines:
 
-See [RESULTS.md](RESULTS.md) for the numbers and what they mean, and
-`results.txt` for the raw output of that run.
+1. The CPU writes `OLD` to each line, flushes it to DRAM, and reads it back,
+   so the CPU cache holds a clean `OLD` copy.
+2. The GPU writes `NEW` to each line in DRAM. The CPU's cached `OLD` copies
+   stay where they are.
+3. The CPU runs the sequence under test on each line. If the load returns
+   `OLD`, it was served from the cache line the flush should have removed.
 
-## How it works: the iGPU as a non-coherent writer
+`gpu_nc.h` does the GPU part through the i915 driver and explains each step.
+The GPU runs a batch of `MI_STORE_DWORD_IMM` commands through a non-snooping
+(uncached) mapping. No shaders are involved.
 
-A normal single-socket machine is fully coherent, so no other agent in it can
-leave the CPU's cached copy stale. The integrated GPU can, if its memory
-accesses are set up not to snoop the CPU caches. `gpu_nc.h` does that through
-the i915 driver:
+## What is tested
 
-1. Allocate a GEM buffer object whose **GPU-side PAT index is uncached and
-   non-coherent** (index 2 on Meteor Lake/Arrow Lake), and map it
-   **write-back** on the CPU.
-2. CPU writes `OLD` to each test line, flushes it to DRAM, then reads it back,
-   so each line has a *clean* `OLD` copy in the CPU caches.
-3. The GPU command streamer writes `NEW` to each line (`MI_STORE_DWORD_IMM` in
-   a batch buffer). The write goes to DRAM without invalidating the CPU's copy.
-   Wait for the GPU to finish.
-4. Run the sequence under test. A load returning `OLD` came from the stale
-   cache line, i.e. it got ahead of the flush. `NEW` means it went to memory.
+`lfence_test` runs each pattern with `lfence`, and the same pattern with
+`mfence` as a control:
 
-`gpu_nc.h` explains each i915 primitive in detail: render node, GEM BOs, PAT
-indices, WB mmap, batch buffers and MI command encoding, softpinned ppGTT
-addresses, execbuf and wait.
+- **Isolated trials:** `FLUSH x; FENCE; mov x`, with an `mfence` before the
+  next trial so each starts with an empty pipeline.
+- **Store-miss trials:** the same, but first a store to a line that is not in
+  the cache. This is the clearest case on Arrow Lake P-cores.
+- **Back to back:** 2048 `FLUSH x; FENCE; mov x` triples in a row, one per
+  line.
 
-### Controls and sanity checks
+The controls, all checked automatically:
 
-- **`load (no flush)`** must be ~100% stale. This shows the setup really
-  produces stale lines, and that nothing (kernel, prefetchers) flushes them
-  behind our back.
-- **PAT index 3** (GPU snoops the CPU caches) must be 0% stale in every row.
-  This shows the stale reads come from non-coherence.
-- **After every round**, the tests flush every line properly and check that
-  it reads `NEW`, so the GPU write really reached memory. They exit with an
-  error if not.
-- **The unrolled test re-checks each stale load right away** with
-  `clflushopt; mfence; load`, which must return `NEW`. This rules out the GPU
-  write landing late. It also records where in the sequence the stale loads
-  happened: late writes would bunch them at the start, and they are spread out.
+- A load with no flush must be ~100% stale, which shows the lines really are
+  stale.
+- Every `mfence` variant must be 0% stale, which shows a correct sequence
+  reads `NEW`.
+- Every stale load is re-read at once with `clflushopt; mfence; load`, which
+  must return `NEW`. That rules out the GPU write simply not having reached
+  DRAM yet.
+- After each round, every line must read `NEW` once properly flushed.
+- `COHERENT=1` runs everything with a GPU mapping that snoops the CPU caches.
+  Every row must then be 0% stale, which shows the stale reads come from
+  non-coherence.
+
+If any control fails, the program says so and exits with status 2.
 
 ## Requirements
 
 - Linux with the **i915** driver on an Intel iGPU that supports
-  `I915_GEM_CREATE_EXT_SET_PAT` (Meteor Lake, Arrow Lake). PAT indices are
-  platform specific; on other GPUs, check the i915 PAT table and confirm the
-  controls behave as described above.
-- A CPU with `clflushopt` and `clwb`.
-- Kernel UAPI headers (`/usr/include/drm/i915_drm.h`), gcc, python3.
-- Access to `/dev/dri/renderD128`, via either:
+  `I915_GEM_CREATE_EXT_SET_PAT` (Meteor Lake, Arrow Lake). The PAT indices
+  are platform specific; see `gpu_nc.h`. The controls tell you if they are
+  wrong for your GPU.
+- A CPU with `clflushopt`.
+- gcc and the kernel UAPI headers (`/usr/include/drm/i915_drm.h`).
+- Access to the GPU render node, via either:
   ```
   sudo usermod -aG render $USER                   # permanent; log in again
   sudo setfacl -m u:$USER:rw /dev/dri/renderD128  # until reboot
   ```
 
-## Running the tests
-
-### Everything at once
+## Running
 
 ```
-./run_all.sh
+./run.sh
 ```
 
-This builds both programs, runs the full suite (about 10 seconds), prints the
-results and saves them to `results.txt`. On a hybrid CPU it runs every test on
-the first P-core and the first E-core (from `/sys/devices/cpu_core/cpus` and
-`/sys/devices/cpu_atom/cpus`). Use `PCORE=<n> ECORE=<n> ./run_all.sh` to pick
-other cores.
+This builds the test, runs it on the first P-core and the first E-core (on
+hybrid CPUs), then runs the coherent control. Output goes to the terminal and
+to `results.txt`. It takes a few seconds.
 
-**Check the controls before reading anything else in the output:**
-
-1. In every PAT 2 and PAT 0 table, `load (no flush)` is ~100% stale.
-2. The PAT 3 table is 0% stale in every row.
-3. Nothing reports "GPU write ... did not reach memory" or "unexpected
-   values".
-4. In `unrolled_test`, every re-check reads `NEW` (`0 OLD`).
-
-If any of these fail, the GPU isn't acting as a non-coherent writer on your
-machine and the other rows mean nothing. The usual cause is a different PAT
-table on another GPU generation.
-
-### Building by hand
+To run by hand:
 
 ```
-make            # builds gpu_stale and unrolled_test
-make clean
+make
+./lfence_test [rounds=300]    # non-coherent run on CPU 2
+CPU=8 ./lfence_test           # pick the core
+COHERENT=1 ./lfence_test      # coherent control
 ```
 
-### `gpu_stale`: one trial at a time
+`run.sh` also accepts `PCORE=<n> ECORE=<n> ROUNDS=<n>`.
 
-Each line gets one sequence, then an `mfence` to drain everything before the
-next line. Sequences rotate across lines and rounds, so each gets about
-1/15 of the loads.
+Each run ends with one of:
 
-```
-./gpu_stale [pat_index=2] [rounds=200] [render|blt]
-```
-
-| Example | What it does |
-|---|---|
-| `./gpu_stale` | main test: PAT 2 (uncached, non-coherent), render engine, CPU 2 |
-| `./gpu_stale 3` | coherent control: every row should be 0% stale |
-| `./gpu_stale 0` | other non-coherent PAT (write-back on the GPU side) |
-| `./gpu_stale 2 100 blt` | GPU writes from the copy engine instead of render |
-| `CPU=8 ./gpu_stale` | run on CPU 8 (an E-core on the 285) |
-| `K=64 F=1 ./gpu_stale` | grouped: 64 x `clflushopt`, one `lfence`, then 64 loads |
-
-`F` selects the grouped-mode fence: 0 = none, 1 = `lfence`, 2 = `mfence`.
-`K` can be 1 to 64.
-
-Output columns: `stale` = load returned OLD (served from the stale cache
-line); `fresh` = returned NEW (read from memory); `other` = anything else
-(should always be 0).
-
-The `MISS-st` rows first store to a cache line that isn't in the cache, so a
-slow store sits in the store buffer ahead of the flush.
-
-### `unrolled_test`: back to back
-
-2048 fully unrolled `clflushopt L; FENCE; load L` triples in a row with no
-fences between them. Lines are visited in order (`seq`) or in a fixed shuffle
-(`rand`), with fence `none`, `lfence`, `sfence; lfence` (`sflf`) or `mfence`.
-
-```
-./unrolled_test [rounds=1600]
-CPU=8 ./unrolled_test
-```
-
-Rounds cycle through the 8 variants, alternating two versions of each:
-
-- **Store version:** saves every loaded value to an array, so each triple
-  also does a store.
-- **Register-only version:** counts stale loads with `cmp`/`adc` and writes
-  nothing to memory.
-
-The second table shows, for fenced variants, where in the 2048-triple
-sequence the stale loads happened, and what an immediate
-`clflushopt; mfence; load` re-check of those lines returned.
+- `RESULT: N of M loads after "flush; lfence" returned stale data.` The
+  misordering was observed.
+- `RESULT: no stale loads ...` Not observed in this run. Try more rounds or
+  another core.
+- `SETUP CHECK FAILED` A control misbehaved, so the run proves nothing on
+  this machine.
 
 ## Caveats
 
-- Only one CPU model has been tested (Core Ultra 9 285). Other Intel
-  generations and AMD may behave differently.
-- Stale-load rates vary between sessions on the same machine. Whether stale
-  loads appear at all is consistent; how often is not. See RESULTS.md.
-- The PAT indices are platform specific. See the comment in `gpu_nc.h`.
+- **Rates vary** between core types and between sessions on the same machine.
+  In one earlier session, store-miss `clflushopt; lfence` was stale only
+  0.01% of the time on a P-core; in later sessions it was 25-86%. E-cores
+  show far fewer stale loads, but still some.
+- **Only one CPU model has been tested so far.** Other Intel generations and
+  AMD may behave differently. Results from other machines are welcome.
+- **The GPU stands in for a remote host**, but the misordering is between a
+  flush and a later load on the CPU. It doesn't depend on how the stale line
+  was created.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `gpu_nc.h` | iGPU non-coherent writer: all the i915 setup, documented |
-| `gpu_stale.c` | one-trial-at-a-time and grouped tests |
-| `gen_unrolled.py` | generates `unrolled.c` (unrolled sequences and variant table) |
-| `unrolled.h` | interface to the generated code |
-| `unrolled_test.c` | back-to-back test driver |
-| `Makefile` | builds both programs |
-| `run_all.sh` | builds and runs the full suite, writes `results.txt` |
-| `RESULTS.md` | results and interpretation for a Core Ultra 9 285 |
-| `results.txt` | raw output of the `run_all.sh` run that RESULTS.md describes |
+| `lfence_test.c` | the test |
+| `gpu_nc.h` | iGPU as a non-coherent writer (i915 setup, documented) |
+| `run.sh` | builds and runs the test on P- and E-cores plus the coherent control |
+| `Makefile` | builds `lfence_test` |
+| `RESULTS.md` | results on a Core Ultra 9 285 |
+| `results.txt` | raw output of the run in RESULTS.md |
