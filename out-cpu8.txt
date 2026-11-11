@@ -4,12 +4,12 @@ Part A: fence matrix                             loads     stale        %   mode
   load (no flush)                                 29255     29255  100.000%  ~100% (control)
   clflushopt; load                                29256     29256  100.000%  stale allowed
   clflushopt; sfence; load                        29257     29257  100.000%  stale allowed
-  clflushopt; lfence; load                        29258        13    0.044%  stale allowed
+  clflushopt; lfence; load                        29258        15    0.051%  stale allowed
   clflushopt; mfence; load                        29259         0    0.000%  0 (control)
   clflushopt; lock add; load                      29260         0    0.000%  stale FORBIDDEN
   store-miss; clflushopt; load                    29260     29260  100.000%  stale allowed
-  store-miss; clflushopt; sfence; load            29260     29259   99.997%  stale allowed
-  store-miss; clflushopt; lfence; load            29260        11    0.038%  stale allowed
+  store-miss; clflushopt; sfence; load            29260     29260  100.000%  stale allowed
+  store-miss; clflushopt; lfence; load            29260        12    0.041%  stale allowed
   store-miss; clflushopt; mfence; load            29260         0    0.000%  0 (control)
   store-miss; clflushopt; lock add; load          29260         0    0.000%  stale FORBIDDEN
   clflush; load                                   29259     29259  100.000%  stale allowed
@@ -32,32 +32,32 @@ Part B: clean writebacks (action on a CLEAN stale line, then read DRAM)
   clflushopt; mfence                              51200         0    0.000%  test
   clflush; mfence                                 51200         0    0.000%  test
   prefetchw                                       51200         0    0.000%  test
-  cmpxchg that fails                              51200     51050   99.707%  test
-  lock cmpxchg that fails                         51200     51059   99.725%  test
-  lock add $0                                     51200     51061   99.729%  test
-  cmpxchg that fails, on another word             51200     51075   99.756%  test
-  lock cmpxchg that fails, on another word        51200     51093   99.791%  test
+  cmpxchg that fails                              51200     51119   99.842%  test
+  lock cmpxchg that fails                         51200     51118   99.840%  test
+  lock add $0                                     51200     51107   99.818%  test
+  cmpxchg that fails, on another word             51200     51135   99.873%  test
+  lock cmpxchg that fails, on another word        51200     51117   99.838%  test
   eviction by cache pressure                      51200         0    0.000%  test
-  eviction rows: 35572 of 51200 lines had left the cache (plain load returned NEW)
+  eviction rows: 38569 of 51200 lines had left the cache (plain load returned NEW)
 
 Part C: erratic reads (24 reads of each line under growing cache pressure)
   read sequence                                   lines   saw NEW   NEW,OLD
-  load                                           122880     19475         0
-  prefetcht0; load                               122880     19582         0
-  prefetcht2; load                               122880     19598         0
-  prefetchnta; load                              122880     19717         0
-  prefetchw; load                                122880     19438         0
+  load                                           122880     24153         0
+  prefetcht0; load                               122880     24129         0
+  prefetcht2; load                               122880     23915         0
+  prefetchnta; load                              122880     24114         0
+  prefetchw; load                                122880     24010         0
   other values: 0 (must be 0)
 
 Part D: demonstrations
-  CAS expecting the stale value: 51198 of 51200 succeeded; 51198 overwrote the GPU's value in DRAM
-  write to another word of the line: 51197 of 51200 lost the GPU's write to word 0
+  CAS expecting the stale value: 51199 of 51200 succeeded; 51199 overwrote the GPU's value in DRAM
+  write to another word of the line: 51196 of 51200 lost the GPU's write to word 0
 
 Part E: failing CAS executed BEFORE the remote write; is the remote write lost?
   action before remote write        lines lost(flush)        lines lost(evict)  (evicted)
-  nothing (control)                 51200          0        51200          0      47512
-  lock cmpxchg that fails           51200      51166        51200      51195          5
-  cmpxchg that fails                51200      51166        51200      51196          4
-  load (control)                    51200          0        51200          0      46942
+  nothing (control)                 51200          0        51200          0      48455
+  lock cmpxchg that fails           51200      51185        51200      51199          1
+  cmpxchg that fails                51200      51186        51200      51198          2
+  load (control)                    51200          0        51200          0      47962
 
 Controls OK.
