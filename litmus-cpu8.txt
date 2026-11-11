@@ -1,0 +1,50 @@
+cxl_litmus: cpus 8 and 9, non-coherent (GPU PAT 2), 100 rounds
+
+test                                                       outcome                                        model         observed    trials
+rrf (this host reads)                                      b = 0                                          allowed          51199     51200
+rrf (this host writes)                                     b = 0                                          allowed          51200     51200
+rrf-flush (this host reads; clflushopt, mfence)            b = 0                                          forbidden            0     51200
+mp-flush-nc (this host reads; clflush, mfence)             b = 0                                          forbidden            0     51200
+rrf-flush with clwb in the reader                          b = 0                                          allowed          51199     51200
+rrf-flush (this host writes; clwb, sfence)                 b = 0                                          forbidden            0     51200
+sb without flushes                                         (a,b) = (0,0)                                  allowed          51196     51200
+sb (all 10 interleavings)                                  (a,b) = (0,0)                                  forbidden            0    512000
+far                                                        (b,c) = (0,1)                                  allowed          51199     51200
+far with a writeback after the read of c                   (b,c) = (0,1)                                  forbidden            0     51200
+cleanwb (second host runs clwb)                            a = 0                                          forbidden            0     51200
+cleanwb (second host runs clflushopt)                      a = 0                                          forbidden            0     51200
+cleanwb (second host runs clflush)                         a = 0                                          forbidden            0     51200
+cleanwb (second host evicts the line)                      a = 0                                          forbidden            0     51200
+erratic (reads back to back)                               (a,b) = (1,0)                                  erratic only         0     51200
+erratic (cache pressure between the reads)                 (a,b) = (1,0)                                  erratic only         0     51200
+erratic (cache pressure between the reads)                 a = 1 (how often the first read was fresh)     allowed          48409     51200
+erratic-flush                                              (a,b) = (1,0)                                  forbidden            0     51200
+corr-fl1                                                   (a,b,c) = (1,2,1)                              erratic only         0     51200
+corr-fl2                                                   (a,b,c) = (1,2,1)                              erratic only         0     51200
+corr-fl12                                                  (a,b,c) = (1,2,1)                              forbidden            0     51200
+ner-lost                                                   (b,c) = (0,1)                                  erratic only         0     51200
+write-race                                                 a = 0                                          allowed          51196     51200
+write-no-race (clflushopt; sfence; write)                  x[0] = 0 (the write of host 1 is lost)         forbidden            0     51200
+write-no-race (clflushopt; sfence; write)                    memory holds x[1] right after the sequence   allowed              0     51200
+write-no-race without the sfence (clflushopt; write)       x[0] = 0 (the write of host 1 is lost)         allowed              0     51200
+write-no-race without the sfence (clflushopt; write)         memory holds x[1] right after the sequence   allowed              0     51200
+write-no-race with clflush and no fence (clflush; write)   x[0] = 0 (the write of host 1 is lost)         forbidden            0     51200
+write-no-race with clflush and no fence (clflush; write)     memory holds x[1] right after the sequence   allowed              0     51200
+write-no-race with clflush (clflush; sfence; write)        x[0] = 0 (the write of host 1 is lost)         forbidden            0     51200
+write-no-race with clflush (clflush; sfence; write)          memory holds x[1] right after the sequence   allowed              1     51200
+write-no-race with clflush (clflush; mfence; write)        x[0] = 0 (the write of host 1 is lost)         forbidden            0     51200
+write-no-race with clflush (clflush; mfence; write)          memory holds x[1] right after the sequence   allowed              0     51200
+write-no-race with clwb (clwb; sfence; write)              x[0] = 0 (the write of host 1 is lost)         allowed          51199     51200
+write-no-race with clwb (clwb; sfence; write)                memory holds x[1] right after the sequence   allowed              0     51200
+cas-nc                                                     both CAS succeed                               allowed          51200     51200
+cas-no-wb                                                  b = 0                                          allowed          51200     51200
+cas-two-events                                             (a,c) = (1,0)                                  forbidden            0     51200
+cas-two-events                                             (a,c) = (1,1)                                  allowed          51199     51200
+cas-host-atomic                                            (b,c) = (2,1)                                  forbidden            0     51200
+cas-host-atomic                                            (b,c) = (1,1): the CAS ran first               allowed          50766     51200
+cas-host-atomic                                            (b,c) = (2,2): the CAS ran later and failed    allowed            434     51200
+cas-erratic                                                (a,b) = (0,1)                                  erratic only         0     51200
+flush by another thread of the host: none                  c = 0                                          allowed          51200     51200
+flush by another thread of the host: clflush; mfence       c = 0                                          forbidden            0     51200
+
+No forbidden outcome was observed.

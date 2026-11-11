@@ -128,3 +128,19 @@ Each run ends with one of:
 | `Makefile` | builds `lfence_test` |
 | `RESULTS.md` | results on a Core Ultra 9 285 |
 | `results.txt` | raw output of the run in RESULTS.md |
+
+## CXL-TSO litmus tests (branch `cxl`)
+
+This branch adds two programs that use the same iGPU trick to check the
+assumptions of the CXL-TSO memory model on real hardware:
+
+- `cxl_litmus` runs the litmus tests of the paper, with the CPU as one host and
+  the GPU as the other. The GPU both writes memory and, through
+  `MI_COPY_MEM_MEM`, reads it.
+- `cxl_test` runs instruction-level checks: which fences order a load after a
+  flush, whether a clean line is ever written back, whether a read can return
+  an older value after a newer one, and what a failing compare-and-swap does.
+
+[LITMUS.md](LITMUS.md) states every test as in the paper, explains how it is
+run with a GPU in place of a second machine, and gives the results on a Core
+Ultra 9 285. Run everything with `./run-cxl.sh`.
