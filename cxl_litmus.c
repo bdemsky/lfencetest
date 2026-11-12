@@ -141,6 +141,18 @@ STORE_SEQ(clflush_store_x1, "clflush (%0)\n\tmov %1, 32(%0)")
 STORE_SEQ(clflush_sfence_store_x1, "clflush (%0)\n\tsfence\n\tmov %1, 32(%0)")
 STORE_SEQ(clflush_mfence_store_x1, "clflush (%0)\n\tmfence\n\tmov %1, 32(%0)")
 STORE_SEQ(clwb_sfence_store_x1, "clwb (%0)\n\tsfence\n\tmov %1, 32(%0)")
+// write-fl-race with something before the clflush: is the loss due to what precedes the flush?
+// "a := Y" is a load of y (the line after x, at 64(%0)) into eax.
+#define STORE_SEQ_A(name, body)                                               \
+  static inline void name(volatile uint32_t *p, uint32_t v) {                 \
+    asm volatile(body ::"r"(p), "r"(V(v)) : "memory", "cc", "eax");           \
+  }
+STORE_SEQ(mfence_clflush_store_x1, "mfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
+STORE_SEQ(lfence_clflush_store_x1, "lfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
+STORE_SEQ_A(loady_clflush_store_x1, "mov 64(%0), %%eax\n\tclflush (%0)\n\tmov %1, 32(%0)")
+STORE_SEQ_A(loady_mfence_clflush_store_x1, "mov 64(%0), %%eax\n\tmfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
+STORE_SEQ_A(loady_lfence_clflush_store_x1, "mov 64(%0), %%eax\n\tlfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
+STORE_SEQ_A(loady_mfence_clflush_sfence_store_x1, "mov 64(%0), %%eax\n\tmfence\n\tclflush (%0)\n\tsfence\n\tmov %1, 32(%0)")
 
 static inline void clflush_mfence(volatile uint32_t *p) { asm volatile("clflush (%0)\n\tmfence" ::"r"(p) : "memory"); }
 static inline void clflushopt_mfence(volatile uint32_t *p) { asm volatile("clflushopt (%0)\n\tmfence" ::"r"(p) : "memory"); }
@@ -499,6 +511,13 @@ static void t_write_no_race(void) {
   WRITE_NO_RACE("write-no-race with clflush (clflush; sfence; write)", 'F', clflush_sfence_store_x1);
   WRITE_NO_RACE("write-no-race with clflush (clflush; mfence; write)", 'F', clflush_mfence_store_x1);
   WRITE_NO_RACE("write-no-race with clwb (clwb; sfence; write)", 'A', clwb_sfence_store_x1);
+  // write-fl-race, with an instruction before the clflush (does a fence BEFORE the flush help?)
+  WRITE_NO_RACE("write-fl-race (mfence; clflush; write)", 'F', mfence_clflush_store_x1);
+  WRITE_NO_RACE("write-fl-race (lfence; clflush; write)", 'F', lfence_clflush_store_x1);
+  WRITE_NO_RACE("write-fl-race (a := Y; clflush; write)", 'F', loady_clflush_store_x1);
+  WRITE_NO_RACE("write-fl-race (a := Y; mfence; clflush; write)", 'F', loady_mfence_clflush_store_x1);
+  WRITE_NO_RACE("write-fl-race (a := Y; lfence; clflush; write)", 'F', loady_lfence_clflush_store_x1);
+  WRITE_NO_RACE("write-fl-race (a := Y; mfence; clflush; sfence; write)", 'F', loady_mfence_clflush_sfence_store_x1);
 }
 
 // ================================================ Appendix A of the paper
@@ -703,7 +722,9 @@ int main(int argc, char **argv) {
   for (int k = 0; k < NT; k++)
     if (!IS(a, 7)) { fprintf(stderr, "GPU read self-test failed (cell %d: %08x)\n", k, a[k]); return 2; }
 
+  int only_wnr = getenv("ONLY_WRITE_NO_RACE") != NULL;   // run just the write-no-race family
   for (int r = 0; r < rounds; r++) {
+    if (only_wnr) { t_write_no_race(); continue; }
     // Section 2, in the paper's order
     t_cas_nc(); t_rrf(); t_rrf_flush(); t_sb(); t_far(); t_cleanwb(); t_erratic();
     t_erratic_flush(); t_write_race(); t_write_no_race();
