@@ -147,6 +147,20 @@ STORE_SEQ(clwb_sfence_store_x1, "clwb (%0)\n\tsfence\n\tmov %1, 32(%0)")
   static inline void name(volatile uint32_t *p, uint32_t v) {                 \
     asm volatile(body ::"r"(p), "r"(V(v)) : "memory", "cc", "eax");           \
   }
+// write-fl-race where the write itself is a locked instruction: x[1] := 2 done by a CAS that
+// succeeds (x[1] is 0), by an xchg, or attempted by a CAS that fails (it still writes the line).
+static inline void clflush_cas_x1(volatile uint32_t *p, uint32_t v) {
+  uint32_t e = V(0);
+  asm volatile("clflush (%1)\n\tlock cmpxchg %2, 32(%1)" : "+a"(e) : "r"(p), "r"(V(v)) : "memory", "cc");
+}
+static inline void clflush_xchg_x1(volatile uint32_t *p, uint32_t v) {
+  uint32_t n = V(v);
+  asm volatile("clflush (%1)\n\txchg %0, 32(%1)" : "+r"(n) : "r"(p) : "memory");
+}
+static inline void clflush_failing_cas_x1(volatile uint32_t *p, uint32_t v) {
+  uint32_t e = V(5);
+  asm volatile("clflush (%1)\n\tlock cmpxchg %2, 32(%1)" : "+a"(e) : "r"(p), "r"(V(v)) : "memory", "cc");
+}
 STORE_SEQ(mfence_clflush_store_x1, "mfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
 STORE_SEQ(lfence_clflush_store_x1, "lfence\n\tclflush (%0)\n\tmov %1, 32(%0)")
 STORE_SEQ_A(loady_clflush_store_x1, "mov 64(%0), %%eax\n\tclflush (%0)\n\tmov %1, 32(%0)")
@@ -512,6 +526,9 @@ static void t_write_no_race(void) {
   WRITE_NO_RACE("write-no-race with clflush (clflush; mfence; write)", 'F', clflush_mfence_store_x1);
   WRITE_NO_RACE("write-no-race with clwb (clwb; sfence; write)", 'A', clwb_sfence_store_x1);
   // write-fl-race, with an instruction before the clflush (does a fence BEFORE the flush help?)
+  WRITE_NO_RACE("write-fl-race (clflush; x[1] := 2 by lock cmpxchg)", 'F', clflush_cas_x1);
+  WRITE_NO_RACE("write-fl-race (clflush; x[1] := 2 by xchg)", 'F', clflush_xchg_x1);
+  WRITE_NO_RACE("write-fl-race (clflush; failing lock cmpxchg on x[1])", 'F', clflush_failing_cas_x1);
   WRITE_NO_RACE("write-fl-race (mfence; clflush; write)", 'F', mfence_clflush_store_x1);
   WRITE_NO_RACE("write-fl-race (lfence; clflush; write)", 'F', lfence_clflush_store_x1);
   WRITE_NO_RACE("write-fl-race (a := Y; clflush; write)", 'F', loady_clflush_store_x1);
